@@ -39,7 +39,7 @@ public class AccountDbProvider : IAccountDbProvider
 		return account;
 	}
 
-	public async Task UpdateAccountRefreshToken(int accountId, string refreshToken, DateTime refreshTokenExpityTime)
+	public async Task UpdateAccountRefreshToken(int accountId, string? refreshToken, DateTime? refreshTokenExpityTime)
 	{
 		await _dbContext
 			.Accounts

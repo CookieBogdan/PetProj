@@ -1,6 +1,0 @@
-1. Разобраться с ISSUER и AUDIENCE JWT'окена.
-2. Logging
-	2.1 Поступающих запросов
-3. Подключить OAuth 2.0
-4. Tests
-5. Api Versioning

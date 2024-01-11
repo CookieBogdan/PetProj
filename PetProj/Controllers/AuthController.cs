@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 
 using PetProj.CLL;
@@ -36,7 +37,7 @@ public class AuthController : ControllerBase
 	private static DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
 
 	/// <summary>Account registration by email and password.</summary>
-	[SwaggerResponse(StatusCodes.Status200OK)]
+	[SwaggerResponse(StatusCodes.Status204NoContent)]
 	[SwaggerResponse(StatusCodes.Status409Conflict)]
 	[HttpPost, Route("register")]
 	public async Task<IActionResult> Registration(AccountDto request)
@@ -54,7 +55,7 @@ public class AuthController : ControllerBase
 		await _confirmEmailRedisProvider.SaveAccountRegistrationCacheAsync(accountCache);
 		await _emailSender.SendConfirmationEmailForRegistrationAsync(request.Email, code);
 
-		return Ok();
+		return NoContent();
 	}
 
 	/// <summary>Confirm account registration using the code from your email.</summary>
@@ -158,5 +159,18 @@ public class AuthController : ControllerBase
 			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, RefreshTokenValidity);
 		}
 		return Ok(new AuthenticatedResponse(accessToken, refreshToken));
+	}
+
+	/// <summary>Logout from account and delete refreshToken from db.</summary>
+	[SwaggerResponse(StatusCodes.Status204NoContent)]
+	[Authorize]
+	[HttpPost, Route("logout")]
+	public async Task<IActionResult> Logout()
+	{
+		int accountId = int.Parse(HttpContext.User.Claims.First(c => c.Type == "Id").Value!);
+
+		await _accountDbProvider.UpdateAccountRefreshToken(accountId, null, null);
+		
+		return NoContent();
 	}
 }
