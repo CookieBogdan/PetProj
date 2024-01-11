@@ -1,15 +1,15 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 
 using PetProj.CLL;
 using PetProj.DLL.DbProviders;
+using PetProj.Models;
 using PetProj.Models.Account;
 using PetProj.Models.Responses;
 using PetProj.SLL;
 using PetProj.Utils;
 
 using Swashbuckle.AspNetCore.Annotations;
-
-using System.Security.Claims;
 
 namespace PetProj.Controllers;
 
@@ -33,7 +33,7 @@ public class AuthController : ControllerBase
 		_jwtService = jwtService;
 	}
 
-	private DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
+	private static DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
 
 	/// <summary>Account registration by email and password.</summary>
 	[SwaggerResponse(StatusCodes.Status200OK)]
@@ -48,8 +48,7 @@ public class AuthController : ControllerBase
 		}
 
 		string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-		//UNDONE: code to string
-		int code = int.Parse(Enumerable.Range(0, 6).Aggregate("", (str, _) => str + Random.Shared.Next(1, 10)));
+		string code = Enumerable.Range(0, 6).Aggregate("", (str, _) => str + Random.Shared.Next(0, 10));
 
 		var accountCache = new AccountRegistrationCache(request.Email, code, passwordHash);
 		await _confirmEmailRedisProvider.SaveAccountRegistrationCacheAsync(accountCache);
@@ -59,7 +58,7 @@ public class AuthController : ControllerBase
 	}
 
 	/// <summary>Confirm account registration using the code from your email.</summary>
-	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(TokenResponse))]
+	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(AuthenticatedResponse))]
 	[SwaggerResponse(StatusCodes.Status400BadRequest)]
 	[HttpPost, Route("register/confirm")]
 	public async Task<IActionResult> ConfirmRegistration(AccountConfirmDto request)
@@ -76,7 +75,7 @@ public class AuthController : ControllerBase
 		}
 
 		string refreshToken = _jwtService.GenerateRefreshToken();
-		await _accountDbProvider.CreateAccountAsync(new Account()
+		var accountId = await _accountDbProvider.CreateAccountAsync(new Account()
 		{
 			Email = accountCache.Email,
 			PasswordHash = accountCache.PasswordHash,
@@ -85,14 +84,14 @@ public class AuthController : ControllerBase
 		});
 		await _confirmEmailRedisProvider.RemoveAccountRegistrationCacheAsync(request.Email);
 
-		var claims = new List<Claim>() { new("Email", accountCache.Email) };
+		var claims = _jwtService.CreateClaims(new UserClaims(accountId, accountCache.Email));
 		string accessToken = _jwtService.GenerateAccessToken(claims);
 
-		return Ok(new TokenResponse(accessToken, refreshToken));
+		return Ok(new AuthenticatedResponse(accessToken, refreshToken));
 	}
 
 	/// <summary>Login to account by email and password.</summary>
-	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(TokenResponse))]
+	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(AuthenticatedResponse))]
 	[SwaggerResponse(StatusCodes.Status409Conflict)]
 	[HttpPost, Route("login")]
 	public async Task<IActionResult> Login(AccountDto request)
@@ -113,10 +112,51 @@ public class AuthController : ControllerBase
 		{
 			refreshToken = account.RefreshToken!;
 		}
-		var claims = new List<Claim>() { new("Email", request.Email) };
+		var claims = _jwtService.CreateClaims(new UserClaims(account.Id, request.Email));
 		string accessToken = _jwtService.GenerateAccessToken(claims);
 
-		return Ok(new TokenResponse(accessToken, refreshToken));
+		return Ok(new AuthenticatedResponse(accessToken, refreshToken));
+	}
+
+	/// <summary>Refresh account access token by 2 tokens.</summary>
+	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(AuthenticatedResponse))]
+	[SwaggerResponse(StatusCodes.Status401Unauthorized)]
+	[SwaggerResponse(StatusCodes.Status400BadRequest)]
+	[HttpPost, Route("refresh")]
+	public async Task<IActionResult> RefreshAccessToken([FromBody] string refreshToken)
+	{
+		if (!HttpContext.Request.Headers.TryGetValue("Authorization", out StringValues headerAuth))
+		{
+			return Unauthorized("AccessToken is not valid.");
+		}
+
+		string spoiledAccessToken = headerAuth.First()!.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1];
+		UserClaims userClaims = _jwtService.GetUserClaimsFromExpiredToken(spoiledAccessToken);
+
+		var account = await _accountDbProvider.GetAccountByIdAsync(userClaims.Id);
+		if (account is null)
+		{
+			return BadRequest("AccessToken payload is not valid.");
+		}
+
+		if (account.RefreshToken is null || account.RefreshTokenExpityTime is null)
+		{
+			return BadRequest("You must not refresh token, you should login to account.");
+		}
+
+		if (refreshToken != account.RefreshToken)
+		{
+			return Unauthorized("RefreshToken is not valid.");
+		}
+
+		var claims = _jwtService.CreateClaims(userClaims);
+		var accessToken = _jwtService.GenerateAccessToken(claims);
+
+		if (account.RefreshTokenExpityTime < DateTime.UtcNow)
+		{
+			refreshToken = _jwtService.GenerateRefreshToken();
+			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, RefreshTokenValidity);
+		}
+		return Ok(new AuthenticatedResponse(accessToken, refreshToken));
 	}
 }
-

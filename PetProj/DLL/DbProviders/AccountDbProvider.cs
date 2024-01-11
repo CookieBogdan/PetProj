@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+
 using PetProj.Models.Account;
 
 namespace PetProj.DLL.DbProviders;
@@ -11,18 +12,29 @@ public class AccountDbProvider : IAccountDbProvider
 		_dbContext = dbContext;
 	}
 
-	public async Task CreateAccountAsync(Account user)
+	public async Task<int> CreateAccountAsync(Account user)
 	{
-		await _dbContext.Accounts.AddAsync(user);
+		var account = await _dbContext.Accounts.AddAsync(user);
 		await _dbContext.SaveChangesAsync();
+		return account.Entity.Id;
 	}
 
-	//UNDONE: without tracking
 	public async Task<Account?> GetAccountByEmailAsync(string email)
 	{
 		var account = await _dbContext
 			.Accounts
+			.AsNoTracking()
 			.FirstOrDefaultAsync(a => a.Email == email);
+
+		return account;
+	}
+
+	public async Task<Account?> GetAccountByIdAsync(int accountId)
+	{
+		var account = await _dbContext
+			.Accounts
+			.AsNoTracking()
+			.FirstOrDefaultAsync(a => a.Id == accountId);
 
 		return account;
 	}

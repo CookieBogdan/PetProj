@@ -1,5 +1,7 @@
 ﻿using Microsoft.IdentityModel.Tokens;
 
+using PetProj.Models;
+
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -8,8 +10,10 @@ namespace PetProj.Utils;
 
 public class JwtService : IJwtService
 {
+	//TODO: issuer & audience - not normal values
 	private const string ISSUER = "MyAuthServer"; // издатель токена
 	private const string AUDIENCE = "MyAuthClient"; // потребитель токена
+	private const string SecurityAlgorithm = SecurityAlgorithms.HmacSha256;
 
 	private readonly IConfiguration _configuration;
 	public JwtService(IConfiguration configuration)
@@ -20,7 +24,7 @@ public class JwtService : IJwtService
 	public string GenerateAccessToken(IEnumerable<Claim> claims)
 	{
 		var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AppSettings:JwtSecretKey"]!));
-		var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+		var cred = new SigningCredentials(key, SecurityAlgorithm);
 
 		var token = new JwtSecurityToken(
 			claims: claims,
@@ -33,23 +37,32 @@ public class JwtService : IJwtService
 		return jwt;
 	}
 
-	//UNDONE: continue refresh token
 	public string GenerateRefreshToken()
 	{
 		return Guid.NewGuid().ToString();
 	}
 
-	public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
+	public UserClaims GetUserClaimsFromExpiredToken(string token)
 	{
-		var tokenValidationParameters = GetTokenValidationParameters(token);
+		var tokenValidationParameters = GetTokenValidationParameters(_configuration["AppSettings:JwtSecretKey"]!);
 		tokenValidationParameters.ValidateLifetime = false;
 
-		var principal = new JwtSecurityTokenHandler().ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
+		var claims = new JwtSecurityTokenHandler().ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken).Claims;
+		//can invalid token -> exception
 
-		var jwtSecurityToken = securityToken as JwtSecurityToken;
-		if (jwtSecurityToken is null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+		if (securityToken is not JwtSecurityToken jwtSecurityToken ||
+			!jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithm, StringComparison.InvariantCultureIgnoreCase))
+		{
 			throw new SecurityTokenException("Invalid token");
-		return principal;
+		}
+
+		int accountId = int.Parse(claims.FirstOrDefault(c => c.Type == nameof(UserClaims.Id))?.Value ?? "0");
+		string? email = claims.FirstOrDefault(c => c.Type == nameof(UserClaims.Email))?.Value;
+
+		if (accountId == 0 || email is null)
+			throw new ArgumentNullException("Claims not valid scheme.");
+
+		return new UserClaims(accountId, email);
 	}
 
 	//TODO: i think static method in this class is not normal
@@ -66,6 +79,15 @@ public class JwtService : IJwtService
 			ValidateLifetime = true,
 			IssuerSigningKey = key,
 			ValidateIssuerSigningKey = true
+		};
+	}
+
+	public IEnumerable<Claim> CreateClaims(UserClaims claims)
+	{
+		return new List<Claim>
+		{
+			new(nameof(UserClaims.Id), claims.Id.ToString()),
+			new(nameof(UserClaims.Email), claims.Email)
 		};
 	}
 }

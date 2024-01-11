@@ -20,7 +20,7 @@ public class EmailSender : IEmailSender
 	private string SmtpHostname { get; }
 	private int SmtpPort { get; }
 
-	public async Task SendConfirmationEmailForRegistrationAsync(string email, int code)
+	public async Task SendConfirmationEmailForRegistrationAsync(string email, string code)
 	{
 		var letter = new MimeMessage(
 			from: new[] { MailboxAddress.Parse(SenderAddress) },

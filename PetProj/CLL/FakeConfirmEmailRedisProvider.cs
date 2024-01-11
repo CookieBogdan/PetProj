@@ -7,7 +7,7 @@ public class FakeConfirmEmailRedisProvider : IConfirmEmailRedisProvider
 	private readonly static List<AccountRegistrationCache> redis = [];
 	public async Task SaveAccountRegistrationCacheAsync(AccountRegistrationCache accountCache)
 	{
-		//[TODO]: 2 query
+		//HACK: 2 query
 		redis.Add(accountCache);
 		await Task.CompletedTask;
 	}

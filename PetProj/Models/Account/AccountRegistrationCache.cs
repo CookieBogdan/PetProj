@@ -1,3 +1,3 @@
 ﻿namespace PetProj.Models.Account;
 
-public record AccountRegistrationCache(string Email, int Code, string PasswordHash);
+public record AccountRegistrationCache(string Email, string Code, string PasswordHash);
