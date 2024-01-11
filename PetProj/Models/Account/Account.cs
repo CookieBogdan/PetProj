@@ -1,4 +1,4 @@
-﻿namespace PetProj.Models;
+﻿namespace PetProj.Models.Account;
 
 public class Account
 {

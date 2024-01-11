@@ -1,112 +1,122 @@
-﻿using PetProj.CLL;
-using PetProj.DLL;
-using PetProj.Models;
+﻿using Microsoft.AspNetCore.Mvc;
+
+using PetProj.CLL;
+using PetProj.DLL.DbProviders;
+using PetProj.Models.Account;
+using PetProj.Models.Responses;
 using PetProj.SLL;
-using PetProj.Utils.Authentication;
+using PetProj.Utils;
 
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
+using Swashbuckle.AspNetCore.Annotations;
 
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 
-namespace PetProj.Controllers
+namespace PetProj.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class AuthController : ControllerBase
 {
-	[Route("api/[controller]")]
-	[ApiController]
-	public class AuthController : ControllerBase
+	private readonly IAccountDbProvider _accountDbProvider;
+	private readonly IEmailSender _emailSender;
+	private readonly IConfirmEmailRedisProvider _confirmEmailRedisProvider;
+	private readonly IJwtService _jwtService;
+	public AuthController(
+		IAccountDbProvider accountDbProvider,
+		IEmailSender emailSender,
+		IConfirmEmailRedisProvider confirmEmailRedisProvider,
+		IJwtService jwtService)
 	{
-		private readonly IConfiguration _configuration;
-		private readonly IUserDbProvider _userDbProvider;
-		private readonly IEmailSender _emailSender;
-		private readonly IConfirmEmailRedisProvider _confirmEmailRedisProvider;
-		public AuthController(IConfiguration configuration, IUserDbProvider userDbProvider, IEmailSender emailSender, IConfirmEmailRedisProvider confirmEmailRedisProvider)
+		_accountDbProvider = accountDbProvider;
+		_emailSender = emailSender;
+		_confirmEmailRedisProvider = confirmEmailRedisProvider;
+		_jwtService = jwtService;
+	}
+
+	private DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
+
+	/// <summary>Account registration by email and password.</summary>
+	[SwaggerResponse(StatusCodes.Status200OK)]
+	[SwaggerResponse(StatusCodes.Status409Conflict)]
+	[HttpPost, Route("register")]
+	public async Task<IActionResult> Registration(AccountDto request)
+	{
+		var account = await _accountDbProvider.GetAccountByEmailAsync(request.Email);
+		if (account is not null)
 		{
-			_configuration = configuration;
-			_userDbProvider = userDbProvider;
-			_emailSender = emailSender;	
-			_confirmEmailRedisProvider = confirmEmailRedisProvider;
+			return Conflict("Email already exists.");
 		}
 
-		[HttpPost]
-		[Route("register")]
-		public async Task<IActionResult> Register(UserDto request)
+		string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+		//UNDONE: code to string
+		int code = int.Parse(Enumerable.Range(0, 6).Aggregate("", (str, _) => str + Random.Shared.Next(1, 10)));
+
+		var accountCache = new AccountRegistrationCache(request.Email, code, passwordHash);
+		await _confirmEmailRedisProvider.SaveAccountRegistrationCacheAsync(accountCache);
+		await _emailSender.SendConfirmationEmailForRegistrationAsync(request.Email, code);
+
+		return Ok();
+	}
+
+	/// <summary>Confirm account registration using the code from your email.</summary>
+	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(TokenResponse))]
+	[SwaggerResponse(StatusCodes.Status400BadRequest)]
+	[HttpPost, Route("register/confirm")]
+	public async Task<IActionResult> ConfirmRegistration(AccountConfirmDto request)
+	{
+		var accountCache = await _confirmEmailRedisProvider.GetAccountRegistrationCacheAsync(request.Email);
+		if (accountCache is null)
 		{
-			if(await _userDbProvider.IsUserExistByEmailAsync(request.Email, out Account? _))
-			{
-				return Conflict("Email already exists.");
-			}
-
-			var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-			string code = Enumerable.Range(0, 6).Aggregate("", (str, _) => str + Random.Shared.Next(0, 10));
-
-			await _confirmEmailRedisProvider.CreateCodeForEmailAsync(request.Email, code, passwordHash);
-			await _emailSender.SendConfirmationEmailForRegistrationAsync(request.Email, code);
-
-			return Ok();
+			return BadRequest("Email not exist.");
 		}
 
-		[HttpPost]
-		[Route("register/confirm")]
-		public async Task<IActionResult> ConfirmRegister(string email, string requestCode)
+		if (accountCache.Code != request.RequestCode)
 		{
-			(Account user, string userCode) = await _confirmEmailRedisProvider.GetCodeForEmailAsync(email);
-			if(userCode != requestCode)
-			{
-				return BadRequest("code is not correct");
-			}
-			await _userDbProvider.CreateNewUserAsync(user);
-			await _confirmEmailRedisProvider.RemoveCodeForEmailAsync(email);
-
-			string jwt = CreateJwtToken(user.Email);
-			return Ok(jwt);
+			return BadRequest("Code is not correct.");
 		}
 
-		[HttpPost]
-		[Route("login")]
-		public async Task<IActionResult> Login(UserDto request)
+		string refreshToken = _jwtService.GenerateRefreshToken();
+		await _accountDbProvider.CreateAccountAsync(new Account()
 		{
-			if (!await _userDbProvider.IsUserExistByEmailAsync(request.Email, out Account? user))
-			{
-				return BadRequest("User not found");
-			}
-			if (!BCrypt.Net.BCrypt.Verify(request.Password, user!.PasswordHash))
-			{
-				return BadRequest("Password is not correct");
-			}
+			Email = accountCache.Email,
+			PasswordHash = accountCache.PasswordHash,
+			RefreshToken = refreshToken,
+			RefreshTokenExpityTime = RefreshTokenValidity
+		});
+		await _confirmEmailRedisProvider.RemoveAccountRegistrationCacheAsync(request.Email);
 
-			string jwt = CreateJwtToken(user.Email);
-			return Ok(jwt);
+		var claims = new List<Claim>() { new("Email", accountCache.Email) };
+		string accessToken = _jwtService.GenerateAccessToken(claims);
+
+		return Ok(new TokenResponse(accessToken, refreshToken));
+	}
+
+	/// <summary>Login to account by email and password.</summary>
+	[SwaggerResponse(StatusCodes.Status200OK, null, typeof(TokenResponse))]
+	[SwaggerResponse(StatusCodes.Status409Conflict)]
+	[HttpPost, Route("login")]
+	public async Task<IActionResult> Login(AccountDto request)
+	{
+		var account = await _accountDbProvider.GetAccountByEmailAsync(request.Email);
+		if (account is null || !BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
+		{
+			return BadRequest("Account details not correct.");
 		}
 
-		private string CreateJwtToken(string email)
+		string refreshToken;
+		if (account.RefreshTokenExpityTime is null || account.RefreshTokenExpityTime < DateTime.UtcNow)
 		{
-			var claims = new List<Claim>() { new Claim("Email", email) };
-
-			var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration.GetSection("AppSettings:JwtToken").Value!));
-			var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-			var token = new JwtSecurityToken(
-				claims: claims,
-				issuer: AuthOptions.ISSUER,
-				audience: AuthOptions.AUDIENCE,
-				expires: DateTime.UtcNow.AddDays(1),
-				signingCredentials: cred);
-
-			string jwt = new JwtSecurityTokenHandler().WriteToken(token);
-			return jwt;
-			//new JwtSecurityTokenHandler().ValidateToken(jwt, new TokenValidationParameters()
-			//{
-			//	ValidateIssuer = true,
-			//	ValidateAudience = true,
-			//	ValidateLifetime = true,
-			//	ValidateIssuerSigningKey = true,
-			//	ValidIssuer = "https://localhost:7210/",
-			//	ValidAudience = "https://localhost:7210/",
-			//	IssuerSigningKey = key,
-			//}, out SecurityToken t);
+			refreshToken = _jwtService.GenerateRefreshToken();
+			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, RefreshTokenValidity);
 		}
+		else
+		{
+			refreshToken = account.RefreshToken!;
+		}
+		var claims = new List<Claim>() { new("Email", request.Email) };
+		string accessToken = _jwtService.GenerateAccessToken(claims);
+
+		return Ok(new TokenResponse(accessToken, refreshToken));
 	}
 }
 

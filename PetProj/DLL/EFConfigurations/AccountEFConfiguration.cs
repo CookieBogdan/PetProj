@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-
-using PetProj.Models;
+using PetProj.Models.Account;
 
 namespace PetProj.DLL.EFConfigurations;
 

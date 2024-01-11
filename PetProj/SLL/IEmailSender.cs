@@ -2,5 +2,5 @@
 
 public interface IEmailSender
 {
-	public Task SendConfirmationEmailForRegistrationAsync(string email, string code);
+	public Task SendConfirmationEmailForRegistrationAsync(string email, int code);
 }

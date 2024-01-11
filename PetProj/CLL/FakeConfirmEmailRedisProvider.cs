@@ -1,24 +1,29 @@
-﻿using PetProj.Models;
+﻿using PetProj.Models.Account;
 
 namespace PetProj.CLL;
 
 public class FakeConfirmEmailRedisProvider : IConfirmEmailRedisProvider
 {
-	private readonly static List<(string email, string code, string passwordHash)> redis = [];
-	public async Task CreateCodeForEmailAsync(string email, string code, string passwordHash)
+	private readonly static List<AccountRegistrationCache> redis = [];
+	public async Task SaveAccountRegistrationCacheAsync(AccountRegistrationCache accountCache)
 	{
-		redis.Add((email, code, passwordHash));
+		//[TODO]: 2 query
+		redis.Add(accountCache);
+		await Task.CompletedTask;
 	}
 
-	public async Task RemoveCodeForEmailAsync(string email)
+	public async Task RemoveAccountRegistrationCacheAsync(string email)
 	{
-		var user = redis.FirstOrDefault(u => u.email == email);
-		redis.Remove(user);
+		var accountCache = redis.FirstOrDefault(a => a.Email == email)
+			?? throw new ArgumentNullException($"account registration cache with email: {email}, not exist. ");
+
+		redis.Remove(accountCache);
+		await Task.CompletedTask;
 	}
 
-	public async Task<(Account user, string code)> GetCodeForEmailAsync(string email)
+	public async Task<AccountRegistrationCache?> GetAccountRegistrationCacheAsync(string email)
 	{
-		var user = redis.FirstOrDefault(u => u.email == email);
-		return (new User(user.email, user.passwordHash), user.code);
+		var accountCache = redis.FirstOrDefault(u => u.Email == email);
+		return await Task.FromResult(accountCache);
 	}
 }
