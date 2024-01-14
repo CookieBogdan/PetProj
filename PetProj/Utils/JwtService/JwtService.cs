@@ -16,6 +16,9 @@ public class JwtService : IJwtService
 	private const string SecurityAlgorithm = SecurityAlgorithms.HmacSha256;
 
 	private readonly IConfiguration _configuration;
+
+	public DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
+
 	public JwtService(IConfiguration configuration)
 	{
 		_configuration = configuration;
@@ -78,7 +81,8 @@ public class JwtService : IJwtService
 			ValidAudience = AUDIENCE,
 			ValidateLifetime = true,
 			IssuerSigningKey = key,
-			ValidateIssuerSigningKey = true
+			ValidateIssuerSigningKey = true,
+			ClockSkew = TimeSpan.Zero,
 		};
 	}
 

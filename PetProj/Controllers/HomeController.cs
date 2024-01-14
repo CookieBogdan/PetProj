@@ -13,6 +13,7 @@ public class HomeController : ControllerBase
 	
 	public IActionResult Hello()
 	{
+		var a = HttpContext;
 		return Ok("Hello, world!");
 	}
 }

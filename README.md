@@ -7,7 +7,7 @@
 
 ## Planned:
 - Logging
-- Подключить OAuth 2.0
+- Подключить OAuth 2.0 / OpenID Connect
 - Unit Tests
 
 ## Maybe  planned:

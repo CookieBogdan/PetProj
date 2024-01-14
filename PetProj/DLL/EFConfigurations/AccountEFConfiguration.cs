@@ -18,6 +18,8 @@ public class AccountEFConfiguration : IEntityTypeConfiguration<Account>
 
 		builder.Property(a => a.PasswordHash).IsRequired().HasMaxLength(100);
 
+		builder.Property(a => a.AccountRegistrationLocation).IsRequired().HasDefaultValue(AccountLocation.None);
+
 		builder.Property(a => a.RefreshToken).IsRequired(false).HasDefaultValue(null).HasMaxLength(100);
 
 		builder.Property(a => a.RefreshTokenExpityTime).IsRequired(false).HasDefaultValue(null);

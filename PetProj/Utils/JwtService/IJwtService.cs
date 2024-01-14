@@ -10,4 +10,6 @@ public interface IJwtService
 	public string GenerateRefreshToken();
 	public UserClaims GetUserClaimsFromExpiredToken(string token);
 	public IEnumerable<Claim> CreateClaims(UserClaims claims);
+
+	public DateTime RefreshTokenValidity { get; }
 }

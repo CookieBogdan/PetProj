@@ -27,7 +27,8 @@ public class Program
 		ServiceRegistry.Register(services, builder.Configuration);
 
 		var app = builder.Build();
-		//app.UseCors("AllowAnyHost");
+		app.UseCors("AllowAnyHost");
+
 		// Configure the HTTP request pipeline.
 		if (app.Environment.IsDevelopment())
 		{

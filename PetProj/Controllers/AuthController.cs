@@ -14,7 +14,7 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace PetProj.Controllers;
 
-[Route("api/[controller]")]
+[Route("api/auth")]
 [ApiController]
 public class AuthController : ControllerBase
 {
@@ -34,8 +34,6 @@ public class AuthController : ControllerBase
 		_jwtService = jwtService;
 	}
 
-	private static DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
-
 	/// <summary>Account registration by email and password.</summary>
 	[SwaggerResponse(StatusCodes.Status204NoContent)]
 	[SwaggerResponse(StatusCodes.Status409Conflict)]
@@ -45,6 +43,10 @@ public class AuthController : ControllerBase
 		var account = await _accountDbProvider.GetAccountByEmailAsync(request.Email);
 		if (account is not null)
 		{
+			if (account.AccountRegistrationLocation != AccountLocation.None)
+			{
+				return BadRequest($"Account registrated with help: {account?.AccountRegistrationLocation}.");
+			}
 			return Conflict("Email already exists.");
 		}
 
@@ -81,7 +83,7 @@ public class AuthController : ControllerBase
 			Email = accountCache.Email,
 			PasswordHash = accountCache.PasswordHash,
 			RefreshToken = refreshToken,
-			RefreshTokenExpityTime = RefreshTokenValidity
+			RefreshTokenExpityTime = _jwtService.RefreshTokenValidity
 		});
 		await _confirmEmailRedisProvider.RemoveAccountRegistrationCacheAsync(request.Email);
 
@@ -98,6 +100,10 @@ public class AuthController : ControllerBase
 	public async Task<IActionResult> Login(AccountDto request)
 	{
 		var account = await _accountDbProvider.GetAccountByEmailAsync(request.Email);
+		if(account?.AccountRegistrationLocation != AccountLocation.None)
+		{
+			return BadRequest($"Account registrated with help: {account?.AccountRegistrationLocation}.");
+		}
 		if (account is null || !BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
 		{
 			return BadRequest("Account details not correct.");
@@ -107,7 +113,7 @@ public class AuthController : ControllerBase
 		if (account.RefreshTokenExpityTime is null || account.RefreshTokenExpityTime < DateTime.UtcNow)
 		{
 			refreshToken = _jwtService.GenerateRefreshToken();
-			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, RefreshTokenValidity);
+			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, _jwtService.RefreshTokenValidity);
 		}
 		else
 		{
@@ -156,7 +162,7 @@ public class AuthController : ControllerBase
 		if (account.RefreshTokenExpityTime < DateTime.UtcNow)
 		{
 			refreshToken = _jwtService.GenerateRefreshToken();
-			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, RefreshTokenValidity);
+			await _accountDbProvider.UpdateAccountRefreshToken(account.Id, refreshToken, _jwtService.RefreshTokenValidity);
 		}
 		return Ok(new AuthenticatedResponse(accessToken, refreshToken));
 	}
