@@ -18,6 +18,7 @@ public class JwtService : IJwtService
 	private readonly IConfiguration _configuration;
 
 	public DateTime RefreshTokenValidity => DateTime.UtcNow.AddMonths(1);
+	private DateTime AccessTokenValidity => DateTime.UtcNow.AddMinutes(15);
 
 	public JwtService(IConfiguration configuration)
 	{
@@ -33,7 +34,7 @@ public class JwtService : IJwtService
 			claims: claims,
 			issuer: ISSUER,
 			audience: AUDIENCE,
-			expires: DateTime.UtcNow.AddMinutes(15),
+			expires: AccessTokenValidity,
 			signingCredentials: cred);
 
 		string jwt = new JwtSecurityTokenHandler().WriteToken(token);

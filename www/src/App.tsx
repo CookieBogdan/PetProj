@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import Register from "./pages/Register";
 import Confirm from "./pages/Confirm";
 import YandexConfirm from "./pages/YandexConfirm";
+import GoogleConfirm from "./pages/GoogleConfirm";
 
 import "./App.css";
 
@@ -49,6 +50,7 @@ function App() {
           <Route path="register" element={<Register />} />
           <Route path="register/confirm" element={<Confirm />} />
           <Route path="yandex/confirm" element={<YandexConfirm />} />
+          <Route path="google/confirm" element={<GoogleConfirm />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

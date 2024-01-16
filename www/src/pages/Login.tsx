@@ -52,9 +52,12 @@ function Login() {
         >
           <img width="22px" src={yandexLogo} />
         </a>
-        <div className="button">
+        <a
+          className="button"
+          href="https://localhost:7210/api/auth/google/login?state=http://localhost:5173/google/confirm"
+        >
           <img width="22px" src={googleLogo} />
-        </div>
+        </a>
       </h2>
 
       <p>{error}</p>

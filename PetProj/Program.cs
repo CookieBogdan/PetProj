@@ -29,13 +29,12 @@ public class Program
 		var app = builder.Build();
 		app.UseCors("AllowAnyHost");
 
-		// Configure the HTTP request pipeline.
 		if (app.Environment.IsDevelopment())
 		{
 			app.UseSwagger();
 			app.UseSwaggerUI();
 		}
-		//app.UseRouting();
+
 		app.UseHttpsRedirection();
 
 		app.UseAuthentication();

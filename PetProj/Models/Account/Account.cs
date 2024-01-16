@@ -8,6 +8,14 @@ public class Account
 	public AccountLocation AccountRegistrationLocation { get; set; } = default!;
 	public string? RefreshToken { get; set; }
 	public DateTime? RefreshTokenExpityTime { get; set; }
+
+	public Account(string email, string passwordHash, AccountLocation accountLocation)
+	{
+		Email = email;
+		PasswordHash = passwordHash;
+		AccountRegistrationLocation = accountLocation;
+	}
+	public Account() {}
 }
 
 public enum AccountLocation

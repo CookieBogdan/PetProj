@@ -39,10 +39,11 @@ public abstract class OAuthControllerBase : ControllerBase
 		else
 		{
 			accountId = await _accountDbProvider.CreateAccountAsync(new Account
-			{
-				Email = accountEmail,
-				PasswordHash = "-"
-			});
+			(
+				accountEmail,
+				"-",
+				providerLocation
+			));
 		}
 
 		var claims = _jwtService.CreateClaims(new UserClaims(accountId, accountEmail));

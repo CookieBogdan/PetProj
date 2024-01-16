@@ -78,10 +78,13 @@ public class AuthController : ControllerBase
 		}
 
 		string refreshToken = _jwtService.GenerateRefreshToken();
-		var accountId = await _accountDbProvider.CreateAccountAsync(new Account()
+		var accountId = await _accountDbProvider.CreateAccountAsync(new Account
+		(
+			accountCache.Email,
+			accountCache.PasswordHash,
+			AccountLocation.None
+		)
 		{
-			Email = accountCache.Email,
-			PasswordHash = accountCache.PasswordHash,
 			RefreshToken = refreshToken,
 			RefreshTokenExpityTime = _jwtService.RefreshTokenValidity
 		});
